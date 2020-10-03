@@ -13,6 +13,7 @@
  */
 
 #include <vector>
+#include <map>
 #include <iostream>
 #include <fstream>
 #include <algorithm>
@@ -73,10 +74,22 @@ typedef struct
   gboolean is_initialized;
 } nns_ex_model_info_s;
 
+struct cmp_str
+{
+    bool operator()(const char* a, const char *b) const
+    {
+        return std::strcmp(a, b) < 0;
+    }
+};
+
 static gint launch_option = 0;
 static nns_ex_model_info_s nns_ex_model_info;
 static GMutex res_mutex;
 static std::vector<ssd_object_s> detected_object;
+static std::map<gchararray, gint, cmp_str> detected_object_list;
+static std::map<gchararray, gint, cmp_str> setting_object_list;
+static gboolean is_line_title;
+static gboolean is_auto_capture;
 
 /**
  * @brief Read strings from file.
@@ -417,26 +430,72 @@ ssd_draw_object(cairo_t *cr, ssd_object_s *objects, const gint size)
     /* draw rectangle */
     cairo_rectangle(cr, x, y, width, height);
     cairo_set_source_rgb(cr, red, green, blue);
-    cairo_set_line_width(cr, 1.5);
+    if(is_line_title)
+    {
+      cairo_set_line_width(cr, 1.5);
+    }
+    else
+    {
+      cairo_set_line_width(cr, 0);
+    }
     cairo_stroke(cr);
 
     /* draw title */
     if (nns_ex_get_label(objects[i].class_id, &label))
     {
       cairo_move_to(cr, x + 5, y + 15);
-      cairo_text_path(cr, label);
+      if(is_line_title)
+      { 
+        cairo_text_path(cr, label);
+      }
+      else
+      {
+        cairo_text_path(cr, "");
+      }
       cairo_set_source_rgb(cr, red, green, blue);
       cairo_fill_preserve(cr);
       cairo_set_source_rgb(cr, 1, 1, 1);
       cairo_set_line_width(cr, .3);
       cairo_stroke(cr);
       cairo_fill_preserve(cr);
+
+      if(detected_object_list.find(label) != detected_object_list.end())
+      {
+        detected_object_list[label]++;
+      }
+      else
+      {
+        detected_object_list[label] = 1;
+      }
     }
     else
     {
       nns_logd("Failed to get label (class id %d)", objects[i].class_id);
     }
   }
+
+  std::map<gchararray, gint>::iterator iter;
+  gboolean auto_capture_flag = true;
+  for(iter = detected_object_list.begin(); iter != detected_object_list.end(); ++iter)
+  {
+    gchararray label = iter->first;
+    gint count = iter->second;
+    if(setting_object_list.find(label) == setting_object_list.end() || setting_object_list[label] != count || setting_object_list.empty())
+    {
+      auto_capture_flag = false;
+      break;
+    }
+  }
+  if(auto_capture_flag)
+  {
+    is_auto_capture = true;
+    setting_object_list.clear();
+  }
+  else
+  {
+    is_auto_capture = false;
+  }
+  detected_object_list.clear();
 }
 
 /**
@@ -616,8 +675,40 @@ static NNSPipelineInfo nns_ex_pipeline = {
 extern "C" void
 nns_ex_register_pipeline(void)
 {
+  is_line_title = true;
+  is_auto_capture = false;
   if (!nns_register_pipeline(&nns_ex_pipeline))
   {
     nns_loge("Failed to register pipeline.");
   }
+}
+
+extern "C" void
+nns_ex_delete_line_and_label(void)
+{
+  is_line_title = false;
+}
+
+extern "C" void
+nns_ex_insert_line_and_label(void)
+{
+  is_line_title = true;
+}
+
+extern "C" void
+nns_ex_register_settings(SettingData * datas, gint len)
+{
+    for(int i = 0; i < len; ++i)
+    {
+        if(setting_object_list.find(datas[i].name) == setting_object_list.end())
+        {
+            setting_object_list[datas[i].name] = datas[i].count;
+        }
+    }
+}
+
+extern "C" gboolean
+nns_ex_get_auto_capture(void)
+{
+  return is_auto_capture;
 }

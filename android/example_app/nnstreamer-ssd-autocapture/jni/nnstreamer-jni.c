@@ -53,6 +53,10 @@ typedef struct _CustomData
   gint pipeline_option;         /**< The pipeline option (selected model) */
 } CustomData;
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> dev-capture
 /* These global variables cache values which are not changing during execution */
 static pthread_t gst_app_thread;
 static pthread_key_t current_jni_env;
@@ -713,6 +717,65 @@ gst_native_get_description(JNIEnv *env, jobject thiz, jint id, jint option)
   return result;
 }
 
+static void
+gst_native_delete_line_and_label(JNIEnv *env, jobject thiz)
+{
+  nns_ex_delete_line_and_label();
+}
+
+static void
+gst_native_insert_line_and_label(JNIEnv *env, jobject thiz)
+{
+  nns_ex_insert_line_and_label();
+}
+
+static void
+gst_native_get_condition_object(JNIEnv *env, jobject _obj, jobjectArray _objects)
+{
+  jsize len = (*env)->GetArrayLength(env, _objects);
+  jobject conditionsObj;
+  jclass clazz;
+
+  jfieldID fid;
+  jstring jstr;
+
+
+  SettingData * datas = (SettingData *)malloc(sizeof(SettingData) * len);
+
+  for(int i = 0; i < len; ++i)
+  {
+      conditionsObj = (*env)->GetObjectArrayElement(env, _objects, i);
+      clazz = (*env)->GetObjectClass(env, conditionsObj);
+
+      fid = (*env)->GetFieldID(env, clazz, "name", "Ljava/lang/String;");
+      jstr = (jstring)(*env)->GetObjectField(env, conditionsObj, fid);
+      const char * pName = (*env)->GetStringUTFChars(env, jstr, NULL);
+
+      fid = (*env)->GetFieldID(env, clazz, "count", "I");
+      int count = (*env)->GetIntField(env, conditionsObj, fid);
+
+      strcpy(datas[i].name, pName);
+      datas[i].count = count;
+
+      nns_logd("Conditions Data --> %s -- %d \n", pName, count);
+
+      (*env)->ReleaseStringUTFChars(env, jstr, pName);
+  }
+
+    nns_logd("Error??");
+    nns_ex_register_settings(datas, len);
+
+  //free(datas);
+}
+
+static gboolean
+gst_native_get_auto_capture(JNIEnv *env, jobject thiz)
+{
+    gboolean auto_capture = nns_ex_get_auto_capture();
+    nns_logd("Auto Capture Value : %d\n", auto_capture);
+    return auto_capture;
+}
+
 /**
  * @brief List of implemented native methods
  */
@@ -729,7 +792,12 @@ static JNINativeMethod native_methods[] = {
     {"nativeGetName", "(II)Ljava/lang/String;", (void *)gst_native_get_name},
     {"nativeGetDescription", "(II)Ljava/lang/String;",
      (void *)gst_native_get_description},
-    {"nativeClassInit", "()Z", (void *)gst_native_class_init}};
+    {"nativeClassInit", "()Z", (void *)gst_native_class_init},
+    {"nativeDeleteLineAndLabel", "()V", (void *)gst_native_delete_line_and_label},
+    {"nativeInsertLineAndLabel", "()V", (void *)gst_native_insert_line_and_label},
+    {"nativeGetCondition", "([Ljava/lang/Object;)V", (void *)gst_native_get_condition_object},
+    {"nativeGetAutoCapture", "()Z", (void *)gst_native_get_auto_capture}
+  };
 
 /**
  * @brief Library initializer
